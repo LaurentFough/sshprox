@@ -4,11 +4,13 @@ sshprox (a.k.a. AutoSSH Tunnelling for FreeBSD, Fun &amp; Profit)
 ---
 These RC unit files use Autossh to enable several on-boot persistent tunnels.
 
-## TODO
-- Expand README.md with more detailed install/setup instructions
-- use either INSTALL.sh or Makefile for initial install
-- create additional script for creating new tunnel definitions
-- incorporate [goExpose](https://github.com/minyk/goexpose) & [jc](https://github.com/kellyjonbrazil/jc), for remote monitoring & management
+## TODO (in order of priority)
+1. Expand README.md with more detailed install/setup instructions
+2. use either `INSTALL.sh` or `Makefile` for initial install
+3. clean-up `rc` service files, remove redundancies, tighten service management functions (`start`, `stop`, `status`)
+4. create additional script for creating new tunnel definitions
+5. incorporate [goExpose](https://github.com/minyk/goexpose) & [jc](https://github.com/kellyjonbrazil/jc), for remote monitoring & management
+6. possibly use growl/ gntp/ xmpp to send network alerts about sudden tunnel outages
 
 ## suggested Folder/ File Layout
 
