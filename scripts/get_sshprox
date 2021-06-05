@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+
+
+get_sshprox_local() {
+  # -a ands the selection criteria (default is or)
+  # -i4 limits to ipv4 internet files
+  # -P inhibits the conversion of port numbers to port names
+  # -c /regex/ limits to commands matching the regex
+  # -u$USER limits to processes owned by $USER
+  # http://man7.org/linux/man-pages/man8/lsof.8.html
+  # https://stackoverflow.com/q/34032299
+
+  echo -e "\n--- LOCAL PORT FORWARDING"
+  echo -e "  You set up the following local port forwardings:"
+  echo
+
+  lsof -a -i4 -P -c '/^ssh$/' -u ${USER:-root} -s TCP:LISTEN
+
+  echo
+  echo "The processes that set up these forwardings are:"
+  echo
+
+  ps -f -p $(lsof -t -a -i4 -P -c '/^ssh$/' -u ${USER:-root} -s TCP:LISTEN)
+
+}
+
+
+get_sshprox_remote() {
+  echo -e "\n--- REMOTE PORT FORWARDING"
+  echo -e "  You set up the following remote port forwardings:"
+  echo
+
+  ps -f -p $(lsof -t -a -i -c '/^ssh$/' -u ${USER:-root} -s TCP:ESTABLISHED) | awk '
+  NR == 1 || /R (\S+:)?[[:digit:]]+:\S+:[[:digit:]]+.*/
+  '
+}
+
+
+ if [[ $(id -u) != 0 || "$EUID" != 0 ]]; then
+     echo "[sshprox]: Recommended to run as root, for complete results"
+     exec sudo -- "$0" "$@"
+
+ else
+	FORWARD_TYPE=$1
+
+	case $FORWARD_TYPE in
+		"local"|"LOCAL"|"l"|"L"|"loc"|"LOC")
+			FORWARD_TYPE=local
+			echo "[sshprox]: Retrieving Forwards: LOCAL."
+			get_sshprox_"$FORWARD_TYPE"
+			;;
+
+		"remote"|"REMOTE"|"r"|"R"|"rem"|"REMOTE")
+			FORWARD_TYPE=remote
+			echo "[sshprox]: Retrieving Forwards: REMOTE."
+			get_sshprox_"$FORWARD_TYPE"
+			;;
+
+		"all"|"ALL"|"a"|"A")
+			echo "[sshprox]: Retrieving Forwards: ALL(Local, Remote)."
+			get_sshprox_local;
+			get_sshprox_remote;
+			;;
+
+		*)
+			echo "[sshprox]: No FORWARD_TYPE(local,remote,all) supplied."
+			echo "[sshprox]: Retrieving Forwards: ALL(Local,Remote)."
+
+			get_sshprox_local;
+			get_sshprox_remote;
+			;;
+	esac
+ fi

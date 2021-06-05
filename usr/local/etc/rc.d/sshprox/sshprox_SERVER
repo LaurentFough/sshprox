@@ -1,0 +1,131 @@
+#!/bin/sh
+
+# PROVIDE: sshprox_<SERVER>
+# REQUIRE: DAEMON networking
+# AFTER:  pf ipfw network
+#
+# Add these lines to /etc/rc.conf.local or /etc/rc.conf
+# to enable this service:
+#
+# sshprox_<SERVER>_enable (bool):      Set to NO by default.
+#                                      Set it to YES to enable sshprox_SERVER service.
+
+. /etc/rc.subr
+
+name="sshprox_<SERVER>"
+rcvar="sshprox_<SERVER>_enable"
+desc="create SOCKS5 Proxy Tunnel to specified host: sshprox.<SERVER>"
+SED="/usr/bin/sed"
+TR="/usr/bin/tr"
+LSOF="/usr/local/sbin/lsof"
+AUTOSSH="/usr/local/bin/autossh"
+
+TUNNEL="sshprox.<SERVER>"
+TUNNELPORT="<PORT>"
+LOG_SSHPROX="/var/log/sshprox/${TUNNEL:-${name}}.log"
+
+load_rc_config $name
+
+: ${sshprox_<SERVER>_conf="/usr/local/etc/sshprox/${name}.conf"}
+: ${sshprox_<SERVER>_pid="/var/run/sshprox/${name}.pid"}
+: # sshprox_<SERVER>_user set below, it may also be pulled from the sshprox_conf file
+: ${sshprox_<SERVER>_stop_maxwait="30"}
+
+sig_reload="USR1"
+
+start_precmd="${name}_prestart"
+start_cmd="${name}_start"
+status_cmd="${name}_status"
+stop_cmd="${name}_stop"
+stop_postcmd="${name}_poststop"
+
+
+command="$AUTOSSH -M 0"
+command_args="-f -T -N -C -v \
+-D *:$TUNNELPORT \
+-E $LOG_SSHPROX \
+-S /tmp/sshprox/"$TUNNEL"_"$TUNNELPORT" \
+$TUNNEL"
+
+pidfile="${sshprox_<SERVER>_pid}"
+
+sshprox_<SERVER>_start ()
+{
+	$command $command_args &
+}
+
+sshprox_<SERVER>_prestart ()
+{
+
+	if [ ! -d /var/run/sshprox ]; then
+		logger -s -t "${name}" "Missing Required Directory: RUN: /var/run/sshprox"
+		logger -s -t "${name}" "Creating: /var/run/sshprox" \
+			&& mkdir -p /var/run/sshprox
+	elif [ ! -d /var/log/sshprox ]; then
+		logger -s -t "${name}" "Missing Required Directory: LOG: /var/log/sshprox"
+		logger -s -t "${name}" "Creating: /var/run/sshprox" \
+			&& mkdir -p /var/log/sshprox
+	elif [ ! -d /tmp/sshprox ]; then
+		logger -s -t "${name}" "Missing Required Directory: TMP+PID /tmp/sshprox"
+		logger -s -t "${name}" "Creating /tmp/sshprox" && \
+			mkdir -p /tmp/sshprox
+	elif [ ! -f /tmp/sshprox/$TUNNEL_$TUNNELPORT ]; then
+		logger -s -t "${name}" "Starting Tunnel: ${name}"
+		# logger -s -t $command $command_args
+	else
+		logger -s -t "${name}" "Tunnel: $name, appears to be currently running."
+		logger -s -t "${name}" "Please stop the Tunnel, or remove the /tmp/sshprox/$TUNNEL_$TUNNELPORT file"
+	fi
+}
+
+sshprox_<SERVER>_running ()
+{
+	local check sess
+	sess="${name}_session"
+
+	check=$(ps -f -p $($LSOF -t -a -i -c '/^ssh$/' -u ${USER:-root} -s "TCP:ESTABLISHED") | grep "${TUNNEL}" | awk 'NR == 1 || /R (\S+:)?[[:digit:]]+:\S+:[[:digit:]]+.*/')
+
+	if [ "$check" ]; then
+		echo "Yes| Tunnel: ${name} IS running."
+		return 0
+	else
+		echo "No| Tunnel: ${name} is NOT running."
+		return 1
+	fi
+}
+
+sshprox_<SERVER>_status ()
+{
+	if sshprox_<SERVER>_running; then
+		echo "REMOTE PORT FORWARDING"
+		echo -e "\tYou set up the following remote port forwardings:"
+
+		ps -f -p $($LSOF -t -a -i -c '/^ssh$/' -u ${USER:-root} -s "TCP:ESTABLISHED") |
+			grep "${TUNNEL}" |
+			awk 'NR == 1 || /R (\S+:)?[[:digit:]]+:\S+:[[:digit:]]+.*/'
+		return 0
+	else
+		return 1
+	fi
+}
+
+sshprox_<SERVER>_stop ()
+{
+
+	if [ ! -f /var/tmp/sshprox/$TUNNEL_$TUNNELPORT ]; then
+		logger -s -t "${name}" "Tunnel: ${name} is not running."
+	else
+		logger -s -t "${name}" "Stopping Tunnel: ${name}"
+		echo "[$TUNNEL]: Stopping Tunnel on Port: $TUNNELPORT"
+		kill $(cat /tmp/sshprox/$TUNNEL_$TUNNELPORT) ||
+			ssh -S /tmp/sshprox/$TUNNEL_$TUNNELPORT -O exit ${TUNNEL:-sshprox.<SERVER>} &&
+			sshprox_<SERVER>_poststop
+	fi
+}
+
+sshprox_<SERVER>_poststop ()
+{
+	rm -f /tmp/sshprox/$TUNNEL_$TUNNELPORT
+}
+
+run_rc_command "$1"
